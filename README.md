@@ -1,6 +1,6 @@
-# next-trend-breakout-strategy
+# hermetix-trend-breakout-strategy
 
-WMA **추세선 돌파 전략** (롱 온리) — [next-trading-core](https://github.com/tauthdev/next-trading-core) 기반 넥스트증권 모의투자 봇.
+WMA **추세선 돌파 전략** (롱 온리) — [hermetix-trading-core](https://github.com/tauthdev/hermetix-trading-core) 기반 넥스트증권 모의투자 봇.
 
 원본은 turtle-trading 프로젝트의 `BackTradingV11` (Bybit 1시간봉 백테스트, 롱/숏 양방향)입니다. 11개 버전의 실험을 거친 가장 정제된 로직을 주식 모의투자 환경에 맞게 **롱 방향만** 이식했습니다.
 

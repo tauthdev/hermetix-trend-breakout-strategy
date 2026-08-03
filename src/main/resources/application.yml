@@ -1,12 +1,13 @@
 spring:
   application:
-    name: next-trend-breakout-strategy
+    name: hermetix-trend-breakout-strategy
 
 server:
   port: 8082
 
-next:
-  api:
+hermetix:
+  broker: next
+  next:
     client-id: ${NEXT_CLIENT_ID:}
     client-secret: ${NEXT_CLIENT_SECRET:}
     account-id: ${NEXT_ACCOUNT_ID:acc_main}

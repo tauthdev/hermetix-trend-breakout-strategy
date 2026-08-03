@@ -1,1 +1,1 @@
-rootProject.name = "next-trend-breakout-strategy"
+rootProject.name = "hermetix-trend-breakout-strategy"

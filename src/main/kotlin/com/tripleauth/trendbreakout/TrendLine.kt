@@ -1,6 +1,6 @@
 package com.tripleauth.trendbreakout
 
-import com.tripleauth.nexttrading.client.dto.Candle
+import com.tripleauth.hermetix.client.dto.Candle
 import java.math.BigDecimal
 import java.math.RoundingMode
 
