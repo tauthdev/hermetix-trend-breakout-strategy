@@ -16,7 +16,7 @@ import java.time.ZonedDateTime
 class TrendBreakoutStrategyTest {
 
     private val properties = TrendBreakoutProperties(
-        symbol = "AAPL",
+        symbols = listOf("AAPL"),
         lookback = 10,
         profitRate = BigDecimal("0.04"),
         volumeRatio = BigDecimal.ZERO,
@@ -104,7 +104,7 @@ class TrendBreakoutStrategyTest {
     @Test
     fun `보유 중이고 만료 시간이 지나면 전량 매도한다`() {
         val now = ZonedDateTime.now()
-        strategy.entryAt = now.minusHours(13)
+        strategy.entryAt["AAPL"] = now.minusHours(13)
 
         val signals = strategy.decide(context(candles(10, 100.0, 1.0), price = "116", holdingQty = "43", now = now))
 
@@ -115,7 +115,7 @@ class TrendBreakoutStrategyTest {
     @Test
     fun `보유 중이지만 만료 전이면 대기한다`() {
         val now = ZonedDateTime.now()
-        strategy.entryAt = now.minusHours(1)
+        strategy.entryAt["AAPL"] = now.minusHours(1)
 
         assertThat(strategy.decide(context(candles(10, 100.0, 1.0), price = "116", holdingQty = "43", now = now))).isEmpty()
     }

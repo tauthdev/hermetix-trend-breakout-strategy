@@ -14,7 +14,7 @@ next:
     max-consecutive-failures: 5
 
 trend-breakout:
-  symbol: AAPL
+  symbols: AAPL,NVDA
   lookback: 120
   profit-rate: 0.04
   volume-ratio: 0

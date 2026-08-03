@@ -12,9 +12,10 @@ import java.math.RoundingMode
 import java.time.Duration
 import java.time.Instant
 import java.time.ZonedDateTime
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * WMA 추세선 돌파 전략 (롱 온리).
+ * WMA 추세선 돌파 전략 (롱 온리, 다중 종목).
  *
  * 원본: turtle-trading 의 BackTradingV11Service (Bybit 1시간봉 백테스트, 롱/숏 양방향).
  * 모의투자 이관에서 바뀐 점:
@@ -22,6 +23,7 @@ import java.time.ZonedDateTime
  * - 익절/손절은 코어의 소프트웨어 브라켓에 위임한다 (원본의 트레일링 익절선 갱신은
  *   고정 익절률로 단순화 — 서버가 TRAILING_STOP 을 지원하면 복원 예정)
  * - 분봉 대신 현재가 스냅샷으로 돌파를 감지한다
+ * - 종목별로 독립 상태를 유지하며, 예산은 종목 수로 나눠 배분한다
  *
  * 진입: 완성된 1시간봉 lookback 개로 가중 추세선을 만들고,
  *      현재가가 돌파선(예측 고점 + 갭)을 넘고 고점 기울기가 양수면 시장가 매수.
@@ -36,28 +38,27 @@ class TrendBreakoutStrategy(
 
     override val spec = StrategySpec(
         name = "trend-breakout",
-        symbols = listOf(properties.symbol),
+        symbols = properties.symbols,
         candleInterval = CandleInterval.HOUR_1,
         candleLimit = properties.lookback + 1, // lookback + 진행 중 캔들
         pollInterval = Duration.ofSeconds(properties.pollSeconds),
     )
 
-    /** 진입에 사용한 추세선 기준 캔들 시각 — 같은 시간봉 구간에서 재진입하지 않기 위함 */
-    @Volatile
-    internal var lastEntryCandle: Instant? = null
+    /** 종목별 진입에 사용한 시간봉 시각 — 같은 구간 재진입 방지 */
+    internal val lastEntryCandle = ConcurrentHashMap<String, Instant>()
 
-    /** 진입 시각 — 만료 청산 판정용 */
-    @Volatile
-    internal var entryAt: ZonedDateTime? = null
+    /** 종목별 진입 시각 — 만료 청산 판정용 */
+    internal val entryAt = ConcurrentHashMap<String, ZonedDateTime>()
 
-    override fun decide(context: StrategyContext): List<Signal> {
-        val symbol = properties.symbol
+    override fun decide(context: StrategyContext): List<Signal> =
+        properties.symbols.flatMap { symbol -> decideForSymbol(symbol, context) }
 
+    private fun decideForSymbol(symbol: String, context: StrategyContext): List<Signal> {
         if (context.hasPosition(symbol)) {
             return decideExit(symbol, context)
         }
 
-        entryAt = null
+        entryAt.remove(symbol)
         if (context.hasOpenOrder(symbol)) return emptyList()
 
         return decideEntry(symbol, context)
@@ -72,7 +73,7 @@ class TrendBreakoutStrategy(
         val inProgress = candles.last()
 
         // 같은 시간봉 구간에서는 한 번만 진입을 시도한다
-        if (lastEntryCandle == inProgress.timestamp) return emptyList()
+        if (lastEntryCandle[symbol] == inProgress.timestamp) return emptyList()
 
         val trend = TrendLine.of(completed.takeLast(properties.lookback))
 
@@ -86,27 +87,29 @@ class TrendBreakoutStrategy(
         if (properties.volumeRatio > BigDecimal.ZERO) {
             val required = trend.avgVolume.multiply(properties.volumeRatio)
             if (BigDecimal(inProgress.volume) < required) {
-                logger.info { "돌파 감지했으나 거래량 부족 / vol=${inProgress.volume} < $required" }
+                logger.info { "[$symbol] 돌파 감지했으나 거래량 부족 / vol=${inProgress.volume} < $required" }
                 return emptyList()
             }
         }
 
-        val budget = context.buyingPower.multiply(properties.budgetRatio)
+        val budget = context.buyingPower
+            .multiply(properties.budgetRatio)
+            .divide(BigDecimal(properties.symbols.size), 8, RoundingMode.HALF_EVEN)
         val quantity = budget.divide(price, 0, RoundingMode.DOWN)
 
         if (quantity < BigDecimal.ONE) {
-            logger.warn { "예산 부족으로 진입 스킵 / budget=$budget price=$price" }
+            logger.warn { "[$symbol] 예산 부족으로 진입 스킵 / budget=$budget price=$price" }
             return emptyList()
         }
 
-        lastEntryCandle = inProgress.timestamp
-        entryAt = context.now
+        lastEntryCandle[symbol] = inProgress.timestamp
+        entryAt[symbol] = context.now
 
         val takeProfit = price.multiply(BigDecimal.ONE + properties.profitRate).setScale(2, RoundingMode.HALF_EVEN)
         val stopLoss = trend.supportLine.setScale(2, RoundingMode.HALF_EVEN)
 
         logger.info {
-            "돌파 진입 / $symbol price=$price 돌파선=${trend.breakoutLine.setScale(2, RoundingMode.HALF_EVEN)} " +
+            "[$symbol] 돌파 진입 / price=$price 돌파선=${trend.breakoutLine.setScale(2, RoundingMode.HALF_EVEN)} " +
                 "기울기=${trend.highInclination} qty=$quantity 익절=$takeProfit 손절=$stopLoss"
         }
 
@@ -121,7 +124,7 @@ class TrendBreakoutStrategy(
     }
 
     private fun decideExit(symbol: String, context: StrategyContext): List<Signal> {
-        val openedAt = entryAt ?: context.now.also { entryAt = it }
+        val openedAt = entryAt.getOrPut(symbol) { context.now }
 
         if (Duration.between(openedAt, context.now) < Duration.ofHours(properties.expireHours)) {
             return emptyList()
@@ -129,8 +132,8 @@ class TrendBreakoutStrategy(
 
         val quantity = context.holding(symbol)?.quantity ?: return emptyList()
 
-        logger.info { "만료 청산 / $symbol qty=$quantity (진입 후 ${properties.expireHours}시간 경과)" }
-        entryAt = null
+        logger.info { "[$symbol] 만료 청산 / qty=$quantity (진입 후 ${properties.expireHours}시간 경과)" }
+        entryAt.remove(symbol)
 
         return listOf(Signal.Sell(symbol = symbol, quantity = quantity))
     }
