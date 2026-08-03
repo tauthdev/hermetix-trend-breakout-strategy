@@ -1,0 +1,25 @@
+package com.tripleauth.trendbreakout
+
+import org.springframework.boot.context.properties.ConfigurationProperties
+import java.math.BigDecimal
+
+@ConfigurationProperties(prefix = "trend-breakout")
+data class TrendBreakoutProperties(
+    /** 감시 종목 */
+    val symbol: String = "AAPL",
+    /** 추세선(WMA) 계산에 사용할 1시간봉 개수 */
+    val lookback: Int = 120,
+    /** 익절 목표 수익률 (0.04 = +4%) */
+    val profitRate: BigDecimal = BigDecimal("0.04"),
+    /**
+     * 거래량 필터 배수. 진행 중 캔들의 거래량이 (가중 평균 거래량 x 이 값) 이상일 때만 진입.
+     * 0 이면 필터를 끈다.
+     */
+    val volumeRatio: BigDecimal = BigDecimal.ZERO,
+    /** 진입 후 이 시간(시간 단위)이 지나면 강제 청산 */
+    val expireHours: Long = 12,
+    /** 주문 가능 현금 중 진입에 사용할 비율 */
+    val budgetRatio: BigDecimal = BigDecimal("0.5"),
+    /** 전략 호출 주기 (초) */
+    val pollSeconds: Long = 60,
+)
