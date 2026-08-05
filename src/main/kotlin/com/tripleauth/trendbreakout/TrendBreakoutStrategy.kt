@@ -39,7 +39,7 @@ class TrendBreakoutStrategy(
     override val spec = StrategySpec(
         name = "trend-breakout",
         symbols = properties.symbols,
-        candleInterval = CandleInterval.HOUR_1,
+        candleInterval = CandleInterval.entries.first { it.value == properties.candleInterval },
         candleLimit = properties.lookback + 1, // lookback + 진행 중 캔들
         pollInterval = Duration.ofSeconds(properties.pollSeconds),
     )

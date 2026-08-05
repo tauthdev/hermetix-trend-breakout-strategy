@@ -1,0 +1,12 @@
+hermetix:
+  broker: kis
+  kis:
+    appkey: ${KIS_APPKEY:}
+    appsecret: ${KIS_APPSECRET:}
+    cano: ${KIS_CANO:}
+
+trend-breakout:
+  symbols: 005930,000660
+  candle-interval: 1d        # KRX 브로커는 일봉만 지원
+  lookback: 60               # 일봉 60개 (약 3개월) 추세선
+  expire-hours: 72

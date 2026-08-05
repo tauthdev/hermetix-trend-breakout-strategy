@@ -7,7 +7,9 @@ import java.math.BigDecimal
 data class TrendBreakoutProperties(
     /** 감시 종목 목록. 종목마다 독립적으로 진입/청산한다 */
     val symbols: List<String> = listOf("AAPL"),
-    /** 추세선(WMA) 계산에 사용할 1시간봉 개수 */
+    /** 캔들 주기 (1m/5m/1h/1d). KRX 브로커(kis/kiwoom)는 1d 만 지원 */
+    val candleInterval: String = "1h",
+    /** 추세선(WMA) 계산에 사용할 캔들 개수 */
     val lookback: Int = 120,
     /** 익절 목표 수익률 (0.04 = +4%) */
     val profitRate: BigDecimal = BigDecimal("0.04"),

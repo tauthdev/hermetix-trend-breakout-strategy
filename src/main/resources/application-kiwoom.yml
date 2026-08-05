@@ -1,0 +1,11 @@
+hermetix:
+  broker: kiwoom
+  kiwoom:
+    appkey: ${KIWOOM_APPKEY:}
+    secretkey: ${KIWOOM_SECRETKEY:}
+
+trend-breakout:
+  symbols: 005930,000660
+  candle-interval: 1d
+  lookback: 60
+  expire-hours: 72
