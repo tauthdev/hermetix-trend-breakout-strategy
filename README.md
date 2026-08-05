@@ -13,7 +13,7 @@ WMA **추세선 돌파 전략** (롱 온리) — [hermetix-trading-core](https:/
 ```
 매 틱 (기본 60초, 미국 정규장 중에만)
 │
-├─ 추세선 계산 (완성된 1시간봉 lookback(120)개)
+├─ 추세선 계산 (완성된 캔들 lookback 개 - 기본 1시간봉 120개, 설정 가능)
 │   ├─ 고점 기울기 = Σ (고점 변화량 × 가중치) / Σ 가중치
 │   ├─ 예측 고점 = 마지막 고점 + 기울기, 예측 저점 = 마지막 저점 + 기울기
 │   ├─ 갭 = 예측 고점 − 예측 저점
@@ -40,6 +40,7 @@ WMA **추세선 돌파 전략** (롱 온리) — [hermetix-trading-core](https:/
 | 키 | 기본값 | 의미 | 조정 효과 |
 |---|---|---|---|
 | `trend-breakout.symbols` | AAPL | 감시 종목 목록 (쉼표 구분) | 종목별 독립 진입/청산. 예산은 종목 수로 분배 |
+| `trend-breakout.candle-interval` | 1h | 캔들 주기 (1m/5m/1h/1d) | KRX 브로커는 `1d` 필수 (동봉 프로파일에 반영됨) |
 | `trend-breakout.lookback` | 120 | 추세선 캔들 수 (시간) | 크게 → 장기 추세 기준 (완만), 작게 → 단기 민감 |
 | `trend-breakout.profit-rate` | 0.04 | 익절률 (+4%) | 손절 폭(지지선까지 거리)과의 비율을 함께 고려할 것 |
 | `trend-breakout.volume-ratio` | 0 (끔) | 거래량 필터 배수 | 켜면 거래량 동반 돌파만 진입 (거짓 돌파 감소) |
@@ -69,7 +70,15 @@ WMA **추세선 돌파 전략** (롱 온리) — [hermetix-trading-core](https:/
 ## 실행
 
 ```bash
-export NEXT_CLIENT_ID=pk_test_...
-export NEXT_CLIENT_SECRET=sk_test_...
+# 넥스트증권 (미국주식, 기본)
+export NEXT_CLIENT_ID=... NEXT_CLIENT_SECRET=...
 ./gradlew bootRun
+
+# 한국투자증권 모의투자 (KRX, 일봉 60개 추세선 프로파일 동봉)
+export KIS_APPKEY=... KIS_APPSECRET=... KIS_CANO=...
+SPRING_PROFILES_ACTIVE=kis ./gradlew bootRun
+
+# 키움 모의투자 (KRX)
+export KIWOOM_APPKEY=... KIWOOM_SECRETKEY=...
+SPRING_PROFILES_ACTIVE=kiwoom ./gradlew bootRun
 ```
