@@ -119,4 +119,44 @@ class TrendBreakoutStrategyTest {
 
         assertThat(strategy.decide(context(candles(10, 100.0, 1.0), price = "116", holdingQty = "43", now = now))).isEmpty()
     }
+
+    @Test
+    fun `재시작으로 발견한 포지션에 복구 브라켓을 등록한다`() {
+        // 평균단가 100 → 익절 104.00, 현재 추세선 지지선 102.00 (예측저점 106 - 갭 4)
+        val signals = strategy.decide(context(candles(10, 100.0, 1.0), price = "103", holdingQty = "43"))
+
+        assertThat(signals).isEmpty()
+        val bracket = strategy.recoveryBrackets["AAPL"]
+        assertThat(bracket?.takeProfitPrice).isEqualByComparingTo(BigDecimal("104.00"))
+        assertThat(bracket?.stopLossPrice).isEqualByComparingTo(BigDecimal("102.00"))
+    }
+
+    @Test
+    fun `복구 손절선을 하회하면 전량 청산한다`() {
+        val signals = strategy.decide(context(candles(10, 100.0, 1.0), price = "101", holdingQty = "43"))
+
+        assertThat(signals).hasSize(1)
+        assertThat((signals[0] as Signal.Sell).quantity).isEqualByComparingTo(BigDecimal("43"))
+        assertThat(strategy.recoveryBrackets["AAPL"]).isNull()
+    }
+
+    @Test
+    fun `복구 익절가에 도달하면 전량 청산한다`() {
+        val signals = strategy.decide(context(candles(10, 100.0, 1.0), price = "104.5", holdingQty = "43"))
+
+        assertThat(signals).hasSize(1)
+        assertThat((signals[0] as Signal.Sell).quantity).isEqualByComparingTo(BigDecimal("43"))
+    }
+
+    @Test
+    fun `포지션이 사라지면 복구 브라켓도 정리된다`() {
+        strategy.recoveryBrackets["AAPL"] = TrendBreakoutStrategy.RecoveryBracket(
+            takeProfitPrice = BigDecimal("104.00"),
+            stopLossPrice = BigDecimal("102.00"),
+        )
+
+        strategy.decide(context(candles(10, 100.0, 1.0), price = "113"))
+
+        assertThat(strategy.recoveryBrackets["AAPL"]).isNull()
+    }
 }

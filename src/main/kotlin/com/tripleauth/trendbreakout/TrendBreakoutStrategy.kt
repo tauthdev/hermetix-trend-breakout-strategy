@@ -21,7 +21,9 @@ import java.util.concurrent.ConcurrentHashMap
  * 모의투자 이관에서 바뀐 점:
  * - 공매도 불가 → 상방 돌파만 진입한다
  * - 익절/손절은 코어의 소프트웨어 브라켓에 위임한다 (원본의 트레일링 익절선 갱신은
- *   고정 익절률로 단순화 — 서버가 TRAILING_STOP 을 지원하면 복원 예정)
+ *   고정 익절률로 단순화 — 서버가 TRAILING_STOP 을 지원하면 복원 예정).
+ *   브라켓은 메모리 상태라 재시작 시 소실되므로, 재시작 후 발견된 포지션은
+ *   복구 브라켓을 등록해 전략이 직접 감시한다
  * - 분봉 대신 현재가 스냅샷으로 돌파를 감지한다
  * - 종목별로 독립 상태를 유지하며, 예산은 종목 수로 나눠 배분한다
  *
@@ -50,6 +52,14 @@ class TrendBreakoutStrategy(
     /** 종목별 진입 시각 — 만료 청산 판정용 */
     internal val entryAt = ConcurrentHashMap<String, ZonedDateTime>()
 
+    /** 재시작으로 브라켓이 소실된 포지션의 복구 익절/손절가 — 전략이 직접 감시한다 */
+    internal val recoveryBrackets = ConcurrentHashMap<String, RecoveryBracket>()
+
+    internal data class RecoveryBracket(
+        val takeProfitPrice: BigDecimal,
+        val stopLossPrice: BigDecimal,
+    )
+
     override fun decide(context: StrategyContext): List<Signal> =
         properties.symbols.flatMap { symbol -> decideForSymbol(symbol, context) }
 
@@ -59,6 +69,7 @@ class TrendBreakoutStrategy(
         }
 
         entryAt.remove(symbol)
+        recoveryBrackets.remove(symbol)
         if (context.hasOpenOrder(symbol)) return emptyList()
 
         return decideEntry(symbol, context)
@@ -124,17 +135,60 @@ class TrendBreakoutStrategy(
     }
 
     private fun decideExit(symbol: String, context: StrategyContext): List<Signal> {
-        val openedAt = entryAt.getOrPut(symbol) { context.now }
+        // 재시작 등으로 진입 시각을 모르면: 만료 시계를 다시 세고, 소실된 브라켓 대신
+        // 전략이 직접 감시할 복구 브라켓을 등록한다
+        val openedAt = entryAt.getOrPut(symbol) {
+            registerRecoveryBracket(symbol, context)
+            context.now
+        }
+
+        val quantity = context.holding(symbol)?.quantity ?: return emptyList()
+
+        val bracket = recoveryBrackets[symbol]
+        val price = context.quote(symbol)?.price
+        if (bracket != null && price != null) {
+            val takeProfitHit = price >= bracket.takeProfitPrice
+            val stopLossHit = price <= bracket.stopLossPrice
+
+            if (takeProfitHit || stopLossHit) {
+                logger.info {
+                    "[$symbol] 복구 ${if (takeProfitHit) "익절" else "손절"} 청산 / " +
+                        "price=$price tp=${bracket.takeProfitPrice} sl=${bracket.stopLossPrice}"
+                }
+                entryAt.remove(symbol)
+                recoveryBrackets.remove(symbol)
+                return listOf(Signal.Sell(symbol = symbol, quantity = quantity))
+            }
+        }
 
         if (Duration.between(openedAt, context.now) < Duration.ofHours(properties.expireHours)) {
             return emptyList()
         }
 
-        val quantity = context.holding(symbol)?.quantity ?: return emptyList()
-
         logger.info { "[$symbol] 만료 청산 / qty=$quantity (진입 후 ${properties.expireHours}시간 경과)" }
         entryAt.remove(symbol)
+        recoveryBrackets.remove(symbol)
 
         return listOf(Signal.Sell(symbol = symbol, quantity = quantity))
+    }
+
+    /**
+     * 재시작으로 소실된 브라켓을 복구한다. 익절은 평균단가 기준으로 재계산하고,
+     * 손절은 원본(진입 시점 지지선)을 알 수 없으므로 현재 추세선의 지지선으로 근사한다.
+     */
+    private fun registerRecoveryBracket(symbol: String, context: StrategyContext) {
+        val entryPrice = context.holding(symbol)?.avgEntryPrice ?: return
+        val completed = context.candles(symbol).dropLast(1)
+        if (completed.size < 2) {
+            logger.warn { "[$symbol] 복구 브라켓 계산 불가 (캔들 부족) - 만료 청산만 동작합니다" }
+            return
+        }
+
+        val trend = TrendLine.of(completed.takeLast(properties.lookback))
+        val takeProfit = entryPrice.multiply(BigDecimal.ONE + properties.profitRate).setScale(2, RoundingMode.HALF_EVEN)
+        val stopLoss = trend.supportLine.setScale(2, RoundingMode.HALF_EVEN)
+
+        recoveryBrackets[symbol] = RecoveryBracket(takeProfitPrice = takeProfit, stopLossPrice = stopLoss)
+        logger.info { "[$symbol] 복구 브라켓 등록 / tp=$takeProfit sl=$stopLoss (재시작으로 브라켓 소실, 평균단가=$entryPrice)" }
     }
 }
